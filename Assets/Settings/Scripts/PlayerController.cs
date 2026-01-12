@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections.Generic;
 
 [RequireComponent(typeof(Rigidbody2D))]
 public class PlayerController : MonoBehaviour
@@ -7,30 +8,40 @@ public class PlayerController : MonoBehaviour
     Rigidbody2D rb;
     Animator animator;
 
-    public float speed = 5f;
+    public float speed = 4f;
     public bool canMove = true;
-    public float inputBuffer = 0.1f;
-    public bool autoHeavy = true;
-
-    bool queuedJab;
-    bool queuedHeavy;
-    bool queuedKick;
-    int comboStepChain; 
+    public float comboTimeout = 0.35f;
     Vector2 moveInput;
+    List<AttackType> inputSequence = new List<AttackType>();
+    float comboTimer;
+
+    enum AttackType {
+        Jab,
+        Heavy,
+        Kick
+    }
 
     private void Awake() {
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponent<Animator>();
     }
 
-    private void FixedUpdate()
-    {
+    private void FixedUpdate() {
         if (!canMove) {
             rb.linearVelocity = Vector2.zero;
             return;
         }
+
         rb.linearVelocity = new Vector2(moveInput.x * speed, rb.linearVelocityY);
         animator.SetFloat("xVelocity", Mathf.Abs(rb.linearVelocityX));
+    }
+
+    private void Update() {
+        if (inputSequence.Count > 0) {
+            comboTimer -= Time.deltaTime;
+            if (comboTimer <= 0f)
+                inputSequence.Clear();
+        }
     }
 
     public void OnMove(InputAction.CallbackContext context) {
@@ -38,89 +49,76 @@ public class PlayerController : MonoBehaviour
     }
 
     public void OnJab(InputAction.CallbackContext context) {
-        if (context.started) {
-            queuedJab = true;
-            TryStartNextAttack();
-        }
+        if (!context.started) return;
+        QueueInput(AttackType.Jab);
     }
 
-    public void OnHeavyPunch(InputAction.CallbackContext context)
-    {
-        if (context.started) {
-            queuedHeavy = true;
-            TryStartNextAttack();
-        }
+    public void OnHeavyPunch(InputAction.CallbackContext context) {
+        if (!context.started) return;
+        QueueInput(AttackType.Heavy);
     }
 
-    public void OnKick(InputAction.CallbackContext context)
-    {
-        if (context.started) {
-            queuedKick = true;
-            TryStartNextAttack();
+    public void OnKick(InputAction.CallbackContext context) {
+        if (!context.started) return;
+        QueueInput(AttackType.Kick);
+    }
+
+    void QueueInput(AttackType attack) {
+        if (inputSequence.Count >= 4) {
+            inputSequence.RemoveAt(0);
         }
+
+        inputSequence.Add(attack);
+        comboTimer = comboTimeout;
+        TryStartNextAttack();
     }
 
     void TryStartNextAttack() {
-        if (!canMove) { 
-            return; 
+        if (!canMove) return;
+        if (inputSequence.Count == 0) return;
+
+        if (IsRightHook())
+        {
+            inputSequence.Clear();
+            canMove = false;
+            animator.SetTrigger("RightHook");
+            return;
         }
 
-        if (comboStepChain == 0 && queuedJab) {
-            queuedJab = false;
-            StartJab();
-            comboStepChain = 1; 
-        }
-        else if (comboStepChain == 1 && queuedJab) {
-            queuedJab = false;
-            StartJab();
+        AttackType lastAttack = inputSequence[inputSequence.Count - 1];
+        inputSequence.Clear();
 
-            if (autoHeavy && queuedHeavy) {
-                comboStepChain = 2; 
-            }
-            else {
-                comboStepChain = 0; 
-            }
-        }
-        else if (comboStepChain == 2 && queuedHeavy) {
-            queuedHeavy = false;
-            StartHeavy();
-            comboStepChain = 0;
-        }
-        else if (queuedHeavy) {
-            queuedHeavy = false;
-            StartHeavy();
-            comboStepChain = 0;
-        }
-        else if (queuedKick) {
-            queuedKick = false;
-            StartKick();
-            comboStepChain = 0;
+        switch (lastAttack)
+        {
+            case AttackType.Jab:
+                canMove = false;
+                animator.SetTrigger("Jab");
+
+                break;
+            case AttackType.Heavy:
+                canMove = false;
+                animator.SetTrigger("HeavyPunch");
+                break;
+
+            case AttackType.Kick:
+                canMove = false;
+                animator.SetTrigger("Kick");
+                break;
         }
     }
 
-    void StartJab() {
-        canMove = false;
-        animator.SetInteger("ComboStepChain", comboStepChain);
-        animator.SetTrigger("Jab");
-    }
 
-    void StartHeavy() {
-        canMove = false;
-        animator.SetTrigger("HeavyPunch");
-    }
-
-    void StartKick() {
-        canMove = false;
-        animator.SetTrigger("Kick");
+    bool IsRightHook() {
+        if (inputSequence.Count < 4) return false;
+        int count = inputSequence.Count;
+        return inputSequence[count - 4] == AttackType.Jab && inputSequence[count - 3] == AttackType.Jab && inputSequence[count - 2] == AttackType.Heavy && inputSequence[count - 1] == AttackType.Jab;
     }
 
     public void EndAttack() {
         rb.linearVelocity = Vector2.zero;
         canMove = true;
 
-        if (!autoHeavy && comboStepChain == 0)
-            comboStepChain = 0;
-
-        TryStartNextAttack();
+        if (inputSequence.Count > 0)
+            TryStartNextAttack();
     }
 }
