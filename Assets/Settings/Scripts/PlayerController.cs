@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections.Generic;
+using System;
 
 [RequireComponent(typeof(Rigidbody2D))]
 public class PlayerController : MonoBehaviour
@@ -8,12 +9,13 @@ public class PlayerController : MonoBehaviour
     Rigidbody2D rb;
     Animator animator;
 
-    public float speed = 4f;
+    public float speed = 5f;
     public bool canMove = true;
     public float comboTimeout = 0.35f;
     Vector2 moveInput;
     List<AttackType> inputSequence = new List<AttackType>();
     float comboTimer;
+    bool upHeld = false;
 
     enum AttackType {
         Jab,
@@ -31,8 +33,17 @@ public class PlayerController : MonoBehaviour
             rb.linearVelocity = Vector2.zero;
             return;
         }
+        if (moveInput.y > 0.5f)
+        {
+            upHeld = true;
+        }
+        else {
+            upHeld = false;
+        }
 
-        rb.linearVelocity = new Vector2(moveInput.x * speed, rb.linearVelocityY);
+        float x = Mathf.Abs(moveInput.x) > 0.01f ? Mathf.Sign(moveInput.x) * speed: 0f;
+
+        rb.linearVelocity = new Vector2(x, rb.linearVelocityY);
         animator.SetFloat("xVelocity", Mathf.Abs(rb.linearVelocityX));
     }
 
@@ -63,6 +74,31 @@ public class PlayerController : MonoBehaviour
         QueueInput(AttackType.Kick);
     }
 
+    public void OnLaunch(InputAction.CallbackContext context) {
+        if (!context.started) return;
+        if (upHeld == true) {
+            QueueInput(AttackType.Heavy);
+        }
+    }
+
+    public void OnFlyingKnee(InputAction.CallbackContext context)
+    {
+        if (!context.started) return;
+        if (upHeld == true)
+        {
+            QueueInput(AttackType.Kick);
+        }
+    }
+
+    public void OnTaunt(InputAction.CallbackContext context)
+    {
+        if (!context.started) return;
+        if (upHeld == true)
+        {
+            QueueInput(AttackType.Jab);
+        }
+    }
+
     void QueueInput(AttackType attack) {
         if (inputSequence.Count >= 4) {
             inputSequence.RemoveAt(0);
@@ -88,6 +124,22 @@ public class PlayerController : MonoBehaviour
         AttackType lastAttack = inputSequence[inputSequence.Count - 1];
         inputSequence.Clear();
 
+        if (upHeld == true && lastAttack == AttackType.Heavy)
+        {
+            StartLaunch();
+            return;
+        }
+        else if (upHeld == true && lastAttack == AttackType.Kick) {
+            StartFlyingKnee();
+            return;
+        }
+
+        else if (upHeld == true && lastAttack == AttackType.Jab)
+        {
+            StartTaunt();
+            return;
+        }
+
         switch (lastAttack)
         {
             case AttackType.Jab:
@@ -107,6 +159,20 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    private void StartLaunch() {
+        canMove = false;
+        animator.SetTrigger("Launch");
+    }
+    private void StartFlyingKnee() {
+        canMove = false;
+        speed = 10f;
+        animator.SetTrigger("FlyingKnee");
+    }
+    private void StartTaunt()
+    {
+        canMove = false;
+        animator.SetTrigger("Taunt");
+    }
 
     bool IsRightHook() {
         if (inputSequence.Count < 4) return false;
@@ -117,6 +183,37 @@ public class PlayerController : MonoBehaviour
     public void EndAttack() {
         rb.linearVelocity = Vector2.zero;
         canMove = true;
+
+        if (inputSequence.Count > 0)
+            TryStartNextAttack();
+    }
+
+    public void SpeedBoost()
+    {
+        speed = 10f;
+        canMove = true;
+        rb.linearVelocity = new Vector2(rb.linearVelocityX, 0f);
+        rb.AddForce(Vector2.up * 5f, ForceMode2D.Impulse);
+
+        if (inputSequence.Count > 0)
+            TryStartNextAttack();
+    }
+
+    public void LaunchSpeedBoost()
+    {
+        speed = 8f;
+        canMove = true;
+
+        if (inputSequence.Count > 0)
+            TryStartNextAttack();
+    }
+
+    public void TrueEndAttack()
+    {
+        rb.linearVelocity = Vector2.zero;
+        canMove = true;
+        speed = 5f;
+        rb.AddForce(Vector2.down * 10f, ForceMode2D.Impulse);
 
         if (inputSequence.Count > 0)
             TryStartNextAttack();
