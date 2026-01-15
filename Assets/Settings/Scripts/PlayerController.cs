@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections.Generic;
-using System;
 
 [RequireComponent(typeof(Rigidbody2D))]
 public class PlayerController : MonoBehaviour
@@ -16,6 +15,7 @@ public class PlayerController : MonoBehaviour
     List<AttackType> inputSequence = new List<AttackType>();
     float comboTimer;
     bool upHeld = false;
+    float halfWidth;
 
     enum AttackType {
         Jab,
@@ -26,6 +26,7 @@ public class PlayerController : MonoBehaviour
     private void Awake() {
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponent<Animator>();
+        halfWidth = GetComponent<Collider2D>().bounds.extents.x;
     }
 
     private void FixedUpdate() {
@@ -48,6 +49,15 @@ public class PlayerController : MonoBehaviour
     }
 
     private void Update() {
+        Camera cam = Camera.main;
+
+        float camHalfWidth = cam.orthographicSize * cam.aspect;
+        float minX = cam.transform.position.x - camHalfWidth + halfWidth;
+        float maxX = cam.transform.position.x + camHalfWidth - halfWidth;
+        Vector3 pos = transform.position;
+        pos.x = Mathf.Clamp(pos.x, minX, maxX);
+
+        transform.position = pos;
         if (inputSequence.Count > 0) {
             comboTimer -= Time.deltaTime;
             if (comboTimer <= 0f)
@@ -165,7 +175,7 @@ public class PlayerController : MonoBehaviour
     }
     private void StartFlyingKnee() {
         canMove = false;
-        speed = 10f;
+        speed = 12f;
         animator.SetTrigger("FlyingKnee");
     }
     private void StartTaunt()
@@ -218,4 +228,5 @@ public class PlayerController : MonoBehaviour
         if (inputSequence.Count > 0)
             TryStartNextAttack();
     }
+
 }
