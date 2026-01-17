@@ -198,8 +198,7 @@ public class PlayerController : MonoBehaviour
             TryStartNextAttack();
     }
 
-    public void SpeedBoost()
-    {
+    public void SpeedBoost() {
         speed = 10f;
         canMove = true;
         rb.linearVelocity = new Vector2(rb.linearVelocityX, 0f);
@@ -209,8 +208,7 @@ public class PlayerController : MonoBehaviour
             TryStartNextAttack();
     }
 
-    public void LaunchSpeedBoost()
-    {
+    public void LaunchSpeedBoost() {
         speed = 8f;
         canMove = true;
 
@@ -218,8 +216,13 @@ public class PlayerController : MonoBehaviour
             TryStartNextAttack();
     }
 
-    public void TrueEndAttack()
+    public void CompleteStop()
     {
+        speed = 0f;
+        canMove = false;
+    }
+
+    public void TrueEndAttack() {
         rb.linearVelocity = Vector2.zero;
         canMove = true;
         speed = 5f;
@@ -227,6 +230,23 @@ public class PlayerController : MonoBehaviour
 
         if (inputSequence.Count > 0)
             TryStartNextAttack();
+    }
+
+    public void ReceiveDamage()
+    {
+        StopAllCoroutines();
+        inputSequence.Clear();
+        canMove = false;
+        rb.linearVelocity = Vector2.zero;
+
+        animator.ResetTrigger("Jab");
+        animator.ResetTrigger("HeavyPunch");
+        animator.ResetTrigger("Kick");
+        animator.ResetTrigger("Launch");
+        animator.ResetTrigger("FlyingKnee");
+        animator.ResetTrigger("Taunt");
+
+        animator.Play("Damage 1", 0, 0f);
     }
 
 }
