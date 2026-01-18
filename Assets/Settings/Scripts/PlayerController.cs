@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections.Generic;
+using static PlayerController;
 
 [RequireComponent(typeof(Rigidbody2D))]
 public class PlayerController : MonoBehaviour
@@ -17,11 +18,13 @@ public class PlayerController : MonoBehaviour
     bool upHeld = false;
     float halfWidth;
 
-    enum AttackType {
+    public enum AttackType {
         Jab,
         Heavy,
         Kick
     }
+
+    public AttackType CurrentAttack { get; private set; }
 
     private void Awake() {
         rb = GetComponent<Rigidbody2D>();
@@ -109,6 +112,13 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    public void OnRightHook(InputAction.CallbackContext context)
+    {
+        if (!context.started) return;
+        QueueInput(AttackType.Jab);
+
+    }
+
     void QueueInput(AttackType attack) {
         if (inputSequence.Count >= 4) {
             inputSequence.RemoveAt(0);
@@ -127,6 +137,7 @@ public class PlayerController : MonoBehaviour
         {
             inputSequence.Clear();
             canMove = false;
+            CurrentAttack = AttackType.Heavy;
             animator.SetTrigger("RightHook");
             return;
         }
@@ -153,16 +164,19 @@ public class PlayerController : MonoBehaviour
         switch (lastAttack)
         {
             case AttackType.Jab:
+                CurrentAttack = AttackType.Jab;
                 canMove = false;
                 animator.SetTrigger("Jab");
 
                 break;
             case AttackType.Heavy:
+                CurrentAttack = AttackType.Heavy;
                 canMove = false;
                 animator.SetTrigger("HeavyPunch");
                 break;
 
             case AttackType.Kick:
+                CurrentAttack = AttackType.Kick;
                 canMove = false;
                 animator.SetTrigger("Kick");
                 break;
@@ -170,10 +184,12 @@ public class PlayerController : MonoBehaviour
     }
 
     private void StartLaunch() {
+        CurrentAttack = AttackType.Heavy;
         canMove = false;
         animator.SetTrigger("Launch");
     }
     private void StartFlyingKnee() {
+        CurrentAttack = AttackType.Heavy;
         canMove = false;
         speed = 12f;
         animator.SetTrigger("FlyingKnee");
@@ -185,9 +201,9 @@ public class PlayerController : MonoBehaviour
     }
 
     bool IsRightHook() {
-        if (inputSequence.Count < 4) return false;
+        if (inputSequence.Count < 3) return false;
         int count = inputSequence.Count;
-        return inputSequence[count - 4] == AttackType.Jab && inputSequence[count - 3] == AttackType.Jab && inputSequence[count - 2] == AttackType.Heavy && inputSequence[count - 1] == AttackType.Jab;
+        return inputSequence[count - 3] == AttackType.Jab && inputSequence[count - 2] == AttackType.Heavy && inputSequence[count - 1] == AttackType.Jab;
     }
 
     public void EndAttack() {
@@ -232,8 +248,7 @@ public class PlayerController : MonoBehaviour
             TryStartNextAttack();
     }
 
-    public void ReceiveDamage()
-    {
+    public void ReceiveDamage(AttackType attackType) {
         StopAllCoroutines();
         inputSequence.Clear();
         canMove = false;
@@ -245,8 +260,31 @@ public class PlayerController : MonoBehaviour
         animator.ResetTrigger("Launch");
         animator.ResetTrigger("FlyingKnee");
         animator.ResetTrigger("Taunt");
+        animator.ResetTrigger("RightHook");
+        switch (attackType) {
+            case AttackType.Heavy:
+                animator.Play("Damage 2", 0, 0f);
+                break;
+            default:
+                animator.Play("Damage 1", 0, 0f);
+                break;
 
-        animator.Play("Damage 1", 0, 0f);
+        }
     }
+
+    public void EnableHitbox()
+    {
+        HitBox hitbox = GetComponentInChildren<HitBox>();
+        if (hitbox != null)
+            hitbox.EnableHitbox();
+    }
+
+    public void DisableHitbox()
+    {
+        HitBox hitbox = GetComponentInChildren<HitBox>();
+        if (hitbox != null)
+            hitbox.DisableHitbox();
+    }
+
 
 }

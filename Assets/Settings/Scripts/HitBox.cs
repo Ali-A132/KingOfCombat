@@ -1,26 +1,47 @@
-using System.ComponentModel;
 using UnityEngine;
 
-
+[RequireComponent(typeof(Collider2D))]
 public class HitBox : MonoBehaviour
 {
     public LayerMask opponentLayer;
+
+    private PlayerController attacker;
+    private Collider2D col;
+    private bool hasHit;
+
+    private void Awake() {
+        attacker = GetComponentInParent<PlayerController>();
+        col = GetComponent<Collider2D>();
+
+        col.isTrigger = true;
+        col.enabled = false;
+    }
+
+    public void EnableHitbox() {
+        hasHit = false;
+        col.enabled = true;
+    }
+
+    public void DisableHitbox() {
+        col.enabled = false;
+    }
+
     private void OnTriggerEnter2D(Collider2D other)
     {
-        if (((1 << other.gameObject.layer) & opponentLayer) != 0)
-        {
-            PlayerController defender = other.GetComponent<PlayerController>();
-            Debug.Log(defender);
-            PlayerController attacker = GetComponentInParent<PlayerController>();
-            Debug.Log(attacker);
+        if (hasHit) return;
 
-            if (defender == null || attacker == null || attacker == defender)
-            {
-                return;
-            }
-
-            Debug.Log("HIT opponent");
-            defender.ReceiveDamage();
+        if (((1 << other.gameObject.layer) & opponentLayer) == 0) {
+            return;
         }
+
+        PlayerController defender = other.GetComponentInParent<PlayerController>();
+
+        if (defender == null || attacker == null || defender == attacker) {
+            return;
+        }
+
+        hasHit = true;
+        Debug.Log("HIT");
+        defender.ReceiveDamage(attacker.CurrentAttack);
     }
 }
