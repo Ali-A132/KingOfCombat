@@ -2,12 +2,14 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections.Generic;
 using static PlayerController;
+using System.Collections;
 
 [RequireComponent(typeof(Rigidbody2D))]
 public class PlayerController : MonoBehaviour
 {
     Rigidbody2D rb;
     Animator animator;
+    Collider2D bodyCollider;
 
     public float speed = 5f;
     public bool canMove = true;
@@ -21,7 +23,8 @@ public class PlayerController : MonoBehaviour
     public enum AttackType {
         Jab,
         Heavy,
-        Kick
+        Kick,
+        Launch
     }
 
     public AttackType CurrentAttack { get; private set; }
@@ -30,6 +33,7 @@ public class PlayerController : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponent<Animator>();
         halfWidth = GetComponent<Collider2D>().bounds.extents.x;
+        bodyCollider = GetComponent<Collider2D>();
     }
 
     private void FixedUpdate() {
@@ -90,7 +94,7 @@ public class PlayerController : MonoBehaviour
     public void OnLaunch(InputAction.CallbackContext context) {
         if (!context.started) return;
         if (upHeld == true) {
-            QueueInput(AttackType.Heavy);
+            QueueInput(AttackType.Launch);
         }
     }
 
@@ -184,7 +188,7 @@ public class PlayerController : MonoBehaviour
     }
 
     private void StartLaunch() {
-        CurrentAttack = AttackType.Heavy;
+        CurrentAttack = AttackType.Launch;
         canMove = false;
         animator.SetTrigger("Launch");
     }
@@ -224,6 +228,20 @@ public class PlayerController : MonoBehaviour
             TryStartNextAttack();
     }
 
+    public void LaunchJump()
+    {
+        canMove = true;
+        rb.linearVelocity = new Vector2(rb.linearVelocityX, 0f);
+        rb.AddForce(Vector2.up * 10f, ForceMode2D.Impulse);
+    }
+
+    public void BackUpJump()
+    {
+        canMove = true;
+        rb.linearVelocity = new Vector2(rb.linearVelocityX, 0f);
+        rb.AddForce(Vector2.up * 6f, ForceMode2D.Impulse);
+    }
+
     public void LaunchSpeedBoost() {
         speed = 8f;
         canMove = true;
@@ -248,28 +266,46 @@ public class PlayerController : MonoBehaviour
             TryStartNextAttack();
     }
 
-    public void ReceiveDamage(AttackType attackType) {
+    public void ReceiveDamage(AttackType attackType, PlayerController attacker)
+    {
         StopAllCoroutines();
         inputSequence.Clear();
         canMove = false;
         rb.linearVelocity = Vector2.zero;
 
+        if (attacker != null)
+        {
+            Collider2D attackerCol = attacker.GetComponent<Collider2D>();
+            if (attackerCol != null & attackType == AttackType.Launch)
+            {
+                Physics2D.IgnoreCollision(bodyCollider, attackerCol, true);
+                StartCoroutine(ReenableCollision(attackerCol, 0.25f));
+            }
+        }
+
         animator.ResetTrigger("Jab");
         animator.ResetTrigger("HeavyPunch");
         animator.ResetTrigger("Kick");
         animator.ResetTrigger("Launch");
-        animator.ResetTrigger("FlyingKnee");
-        animator.ResetTrigger("Taunt");
-        animator.ResetTrigger("RightHook");
-        switch (attackType) {
+
+        switch (attackType)
+        {
+            case AttackType.Launch:
+                animator.Play("Falling Down", 0, 0f);
+                break;
             case AttackType.Heavy:
                 animator.Play("Damage 2", 0, 0f);
                 break;
             default:
                 animator.Play("Damage 1", 0, 0f);
                 break;
-
         }
+    }
+
+    IEnumerator ReenableCollision(Collider2D attackerCol, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        Physics2D.IgnoreCollision(bodyCollider, attackerCol, false);
     }
 
     public void EnableHitbox()

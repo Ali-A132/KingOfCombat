@@ -42,6 +42,6 @@ public class HitBox : MonoBehaviour
 
         hasHit = true;
         Debug.Log("HIT");
-        defender.ReceiveDamage(attacker.CurrentAttack);
+        defender.ReceiveDamage(attacker.CurrentAttack, attacker);
     }
 }
