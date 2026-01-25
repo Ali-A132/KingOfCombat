@@ -11,7 +11,7 @@ public class PlayerController : MonoBehaviour
     Animator animator;
     Collider2D bodyCollider;
 
-    public float speed = 5f;
+    public float speed = 6f;
     public bool canMove = true;
     public float comboTimeout = 0.35f;
     Vector2 moveInput;
@@ -19,6 +19,10 @@ public class PlayerController : MonoBehaviour
     float comboTimer;
     bool upHeld = false;
     float halfWidth;
+    public bool isInvincible = false;
+    Camera cam;
+    float camHalfWidth;
+    bool movementLockedInAir = false;
 
     public enum AttackType {
         Jab,
@@ -30,6 +34,8 @@ public class PlayerController : MonoBehaviour
     public AttackType CurrentAttack { get; private set; }
 
     private void Awake() {
+        cam = Camera.main;
+        camHalfWidth = cam.orthographicSize * cam.aspect;
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponent<Animator>();
         halfWidth = GetComponent<Collider2D>().bounds.extents.x;
@@ -41,12 +47,16 @@ public class PlayerController : MonoBehaviour
             rb.linearVelocity = Vector2.zero;
             return;
         }
-        if (moveInput.y > 0.5f)
-        {
+
+        if (moveInput.y > 0.50f) { 
             upHeld = true;
+        } else { 
+            upHeld = false; 
         }
-        else {
-            upHeld = false;
+
+        if (movementLockedInAir) {
+            rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
+            return;
         }
 
         float x = Mathf.Abs(moveInput.x) > 0.01f ? Mathf.Sign(moveInput.x) * speed: 0f;
@@ -56,9 +66,6 @@ public class PlayerController : MonoBehaviour
     }
 
     private void Update() {
-        Camera cam = Camera.main;
-
-        float camHalfWidth = cam.orthographicSize * cam.aspect;
         float minX = cam.transform.position.x - camHalfWidth + halfWidth;
         float maxX = cam.transform.position.x + camHalfWidth - halfWidth;
         Vector3 pos = transform.position;
@@ -78,7 +85,10 @@ public class PlayerController : MonoBehaviour
 
     public void OnJab(InputAction.CallbackContext context) {
         if (!context.started) return;
-        QueueInput(AttackType.Jab);
+        if (upHeld)
+            StartTaunt();
+        else
+            QueueInput(AttackType.Jab);
     }
 
     public void OnHeavyPunch(InputAction.CallbackContext context) {
@@ -107,15 +117,6 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    public void OnTaunt(InputAction.CallbackContext context)
-    {
-        if (!context.started) return;
-        if (upHeld == true)
-        {
-            QueueInput(AttackType.Jab);
-        }
-    }
-
     public void OnRightHook(InputAction.CallbackContext context)
     {
         if (!context.started) return;
@@ -124,7 +125,7 @@ public class PlayerController : MonoBehaviour
     }
 
     void QueueInput(AttackType attack) {
-        if (inputSequence.Count >= 4) {
+        if (inputSequence.Count >= 3) {
             inputSequence.RemoveAt(0);
         }
 
@@ -137,14 +138,8 @@ public class PlayerController : MonoBehaviour
         if (!canMove) return;
         if (inputSequence.Count == 0) return;
 
-        if (IsRightHook())
-        {
-            inputSequence.Clear();
-            canMove = false;
-            CurrentAttack = AttackType.Heavy;
-            animator.SetTrigger("RightHook");
+        if (moveInput.x != 0f && IsHoldingBack(null))
             return;
-        }
 
         AttackType lastAttack = inputSequence[inputSequence.Count - 1];
         inputSequence.Clear();
@@ -204,12 +199,6 @@ public class PlayerController : MonoBehaviour
         animator.SetTrigger("Taunt");
     }
 
-    bool IsRightHook() {
-        if (inputSequence.Count < 3) return false;
-        int count = inputSequence.Count;
-        return inputSequence[count - 3] == AttackType.Jab && inputSequence[count - 2] == AttackType.Heavy && inputSequence[count - 1] == AttackType.Jab;
-    }
-
     public void EndAttack() {
         rb.linearVelocity = Vector2.zero;
         canMove = true;
@@ -243,24 +232,29 @@ public class PlayerController : MonoBehaviour
     }
 
     public void LaunchSpeedBoost() {
-        speed = 8f;
+        speed = 10f;
         canMove = true;
 
         if (inputSequence.Count > 0)
             TryStartNextAttack();
     }
 
-    public void CompleteStop()
-    {
-        speed = 0f;
-        canMove = false;
-    }
-
     public void TrueEndAttack() {
         rb.linearVelocity = Vector2.zero;
         canMove = true;
-        speed = 5f;
+        speed = 6f;
         rb.AddForce(Vector2.down * 10f, ForceMode2D.Impulse);
+
+        if (inputSequence.Count > 0)
+            TryStartNextAttack();
+    }
+
+    public void FallingDownPush()
+    {
+        rb.linearVelocity = Vector2.zero;
+        canMove = true;
+        speed = 6f;
+        rb.AddForce(Vector2.down * 4f, ForceMode2D.Impulse);
 
         if (inputSequence.Count > 0)
             TryStartNextAttack();
@@ -268,28 +262,47 @@ public class PlayerController : MonoBehaviour
 
     public void ReceiveDamage(AttackType attackType, PlayerController attacker)
     {
+        if (isInvincible) return;
+
+        bool grounded = Mathf.Abs(rb.linearVelocity.y) < 0.01f;
+
+        if (grounded && IsHoldingBack(attacker) && attackType != AttackType.Launch)
+        {
+            HandleBlock(attacker);
+            return;
+        }
+
         StopAllCoroutines();
         inputSequence.Clear();
         canMove = false;
-        rb.linearVelocity = Vector2.zero;
 
-        if (attacker != null)
-        {
+        if (attackType == AttackType.Launch) {
+            rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
+        } else {
+            rb.linearVelocity = Vector2.zero;
+        }
+
+        if (attacker != null) {
             Collider2D attackerCol = attacker.GetComponent<Collider2D>();
-            if (attackerCol != null & attackType == AttackType.Launch)
-            {
+            if (attackerCol != null && attackType == AttackType.Launch) {
                 Physics2D.IgnoreCollision(bodyCollider, attackerCol, true);
-                StartCoroutine(ReenableCollision(attackerCol, 0.25f));
+                StartCoroutine(ReenableCollision(attackerCol, 0.10f));
             }
+        }
+
+        if (attackType == AttackType.Launch) {
+            movementLockedInAir = true;
+            rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
         }
 
         animator.ResetTrigger("Jab");
         animator.ResetTrigger("HeavyPunch");
         animator.ResetTrigger("Kick");
         animator.ResetTrigger("Launch");
+        animator.ResetTrigger("FlyingKnee");
+        animator.ResetTrigger("Taunt");
 
-        switch (attackType)
-        {
+        switch (attackType) {
             case AttackType.Launch:
                 animator.Play("Falling Down", 0, 0f);
                 break;
@@ -302,11 +315,62 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    IEnumerator ReenableCollision(Collider2D attackerCol, float delay)
-    {
+    IEnumerator ReenableCollision(Collider2D attackerCol, float delay) {
         yield return new WaitForSeconds(delay);
         Physics2D.IgnoreCollision(bodyCollider, attackerCol, false);
     }
+
+    bool IsHoldingBack(PlayerController attacker) {
+        if (attacker == null) {
+            return false;
+        }
+        float attackDirection = attacker.transform.position.x - transform.position.x;
+        if((attackDirection > 0 && moveInput.x < -0.25f) || (attackDirection < 0 && moveInput.x > 0.25f)) {
+            return true;
+        }
+        return false;
+    }
+
+    void HandleBlock(PlayerController attacker)
+    {
+        StopAllCoroutines();
+        inputSequence.Clear();
+
+        rb.linearVelocity = Vector2.zero;
+        canMove = false;
+
+        animator.Play("Block", 0, 0f);
+
+        if (attacker != null)
+        {
+            float dir = Mathf.Sign(transform.position.x - attacker.transform.position.x);
+            rb.AddForce(new Vector2(dir * 2.5f, 0f), ForceMode2D.Impulse);
+        }
+
+        StartCoroutine(BlockStun(0.2f));
+    }
+
+    IEnumerator BlockStun(float duration)
+    {
+        yield return new WaitForSeconds(duration);
+        canMove = true;
+    }
+
+
+
+    public void OnLanded() {
+        movementLockedInAir = false;
+        canMove = true;
+    }
+
+    public void EnableInvincibility() {
+        isInvincible = true;
+    }
+
+    public void DisableInvincibility() {
+        isInvincible = false;
+    }
+
 
     public void EnableHitbox()
     {

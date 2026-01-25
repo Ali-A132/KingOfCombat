@@ -40,6 +40,10 @@ public class HitBox : MonoBehaviour
             return;
         }
 
+        if (defender.isInvincible) {
+            return;
+        }
+
         hasHit = true;
         Debug.Log("HIT");
         defender.ReceiveDamage(attacker.CurrentAttack, attacker);
