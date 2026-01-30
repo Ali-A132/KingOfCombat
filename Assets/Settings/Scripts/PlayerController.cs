@@ -23,12 +23,15 @@ public class PlayerController : MonoBehaviour
     Camera cam;
     float camHalfWidth;
     bool movementLockedInAir = false;
+    bool blockHeld = false;
 
     public enum AttackType {
         Jab,
         Heavy,
         Kick,
-        Launch
+        Launch,
+        Block,
+        FlyingKnee
     }
 
     public AttackType CurrentAttack { get; private set; }
@@ -66,13 +69,17 @@ public class PlayerController : MonoBehaviour
     }
 
     private void Update() {
-        float minX = cam.transform.position.x - camHalfWidth + halfWidth;
-        float maxX = cam.transform.position.x + camHalfWidth - halfWidth;
-        Vector3 pos = transform.position;
-        pos.x = Mathf.Clamp(pos.x, minX, maxX);
+        if (Mathf.Abs(rb.linearVelocityX) > 0.01f)
+        {
+            float minX = cam.transform.position.x - camHalfWidth + halfWidth;
+            float maxX = cam.transform.position.x + camHalfWidth - halfWidth;
+            Vector3 pos = transform.position;
+            pos.x = Mathf.Clamp(pos.x, minX, maxX);
+            transform.position = pos;
+        }
 
-        transform.position = pos;
-        if (inputSequence.Count > 0) {
+        if (inputSequence.Count > 0)
+        {
             comboTimer -= Time.deltaTime;
             if (comboTimer <= 0f)
                 inputSequence.Clear();
@@ -113,7 +120,7 @@ public class PlayerController : MonoBehaviour
         if (!context.started) return;
         if (upHeld == true)
         {
-            QueueInput(AttackType.Kick);
+            QueueInput(AttackType.FlyingKnee);
         }
     }
 
@@ -122,6 +129,20 @@ public class PlayerController : MonoBehaviour
         if (!context.started) return;
         QueueInput(AttackType.Jab);
 
+    }
+
+    public void OnBlock(InputAction.CallbackContext context)
+    {
+        if (context.started)
+        {
+            blockHeld = true;
+            QueueInput(AttackType.Block);
+        }
+        else if (context.canceled)
+        {
+            blockHeld = false;
+            ReleaseBlock();
+        }
     }
 
     void QueueInput(AttackType attack) {
@@ -137,9 +158,6 @@ public class PlayerController : MonoBehaviour
     void TryStartNextAttack() {
         if (!canMove) return;
         if (inputSequence.Count == 0) return;
-
-        if (moveInput.x != 0f && IsHoldingBack(null))
-            return;
 
         AttackType lastAttack = inputSequence[inputSequence.Count - 1];
         inputSequence.Clear();
@@ -162,11 +180,15 @@ public class PlayerController : MonoBehaviour
 
         switch (lastAttack)
         {
+            case AttackType.Block:
+                CurrentAttack = AttackType.Block;
+                canMove = false;
+                animator.SetTrigger("Block");
+                break;
             case AttackType.Jab:
                 CurrentAttack = AttackType.Jab;
                 canMove = false;
                 animator.SetTrigger("Jab");
-
                 break;
             case AttackType.Heavy:
                 CurrentAttack = AttackType.Heavy;
@@ -188,7 +210,7 @@ public class PlayerController : MonoBehaviour
         animator.SetTrigger("Launch");
     }
     private void StartFlyingKnee() {
-        CurrentAttack = AttackType.Heavy;
+        CurrentAttack = AttackType.FlyingKnee;
         canMove = false;
         speed = 12f;
         animator.SetTrigger("FlyingKnee");
@@ -262,14 +284,9 @@ public class PlayerController : MonoBehaviour
 
     public void ReceiveDamage(AttackType attackType, PlayerController attacker)
     {
-        if (isInvincible) return;
-
-        bool grounded = Mathf.Abs(rb.linearVelocity.y) < 0.01f;
-
-        if (grounded && IsHoldingBack(attacker) && attackType != AttackType.Launch)
-        {
-            HandleBlock(attacker);
+        if (isInvincible) {
             return;
+        
         }
 
         StopAllCoroutines();
@@ -278,6 +295,7 @@ public class PlayerController : MonoBehaviour
 
         if (attackType == AttackType.Launch) {
             rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
+            movementLockedInAir = true;
         } else {
             rb.linearVelocity = Vector2.zero;
         }
@@ -290,23 +308,15 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        if (attackType == AttackType.Launch) {
-            movementLockedInAir = true;
-            rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
-        }
-
-        animator.ResetTrigger("Jab");
-        animator.ResetTrigger("HeavyPunch");
-        animator.ResetTrigger("Kick");
-        animator.ResetTrigger("Launch");
-        animator.ResetTrigger("FlyingKnee");
-        animator.ResetTrigger("Taunt");
+        animator.Rebind();
+        animator.Update(0f);
 
         switch (attackType) {
             case AttackType.Launch:
                 animator.Play("Falling Down", 0, 0f);
                 break;
             case AttackType.Heavy:
+            case AttackType.FlyingKnee:
                 animator.Play("Damage 2", 0, 0f);
                 break;
             default:
@@ -320,43 +330,16 @@ public class PlayerController : MonoBehaviour
         Physics2D.IgnoreCollision(bodyCollider, attackerCol, false);
     }
 
-    bool IsHoldingBack(PlayerController attacker) {
-        if (attacker == null) {
-            return false;
-        }
-        float attackDirection = attacker.transform.position.x - transform.position.x;
-        if((attackDirection > 0 && moveInput.x < -0.25f) || (attackDirection < 0 && moveInput.x > 0.25f)) {
-            return true;
-        }
-        return false;
-    }
-
-    void HandleBlock(PlayerController attacker)
+    public void FreezeBlockAnimation()
     {
-        StopAllCoroutines();
-        inputSequence.Clear();
-
-        rb.linearVelocity = Vector2.zero;
-        canMove = false;
-
-        animator.Play("Block", 0, 0f);
-
-        if (attacker != null)
-        {
-            float dir = Mathf.Sign(transform.position.x - attacker.transform.position.x);
-            rb.AddForce(new Vector2(dir * 2.5f, 0f), ForceMode2D.Impulse);
-        }
-
-        StartCoroutine(BlockStun(0.2f));
+        if (blockHeld)
+            animator.speed = 0f;
     }
 
-    IEnumerator BlockStun(float duration)
+    void ReleaseBlock()
     {
-        yield return new WaitForSeconds(duration);
-        canMove = true;
+        animator.speed = 1f;
     }
-
-
 
     public void OnLanded() {
         movementLockedInAir = false;

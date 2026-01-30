@@ -30,22 +30,16 @@ public class HitBox : MonoBehaviour
     {
         if (hasHit) return;
 
-        if (((1 << other.gameObject.layer) & opponentLayer) == 0) {
-            return;
-        }
+        if (!other.CompareTag("Player")) return;
 
         PlayerController defender = other.GetComponentInParent<PlayerController>();
 
-        if (defender == null || attacker == null || defender == attacker) {
-            return;
-        }
-
-        if (defender.isInvincible) {
+        if (defender == null || attacker == null || defender == attacker || defender.isInvincible) {
             return;
         }
 
         hasHit = true;
-        Debug.Log("HIT");
+        Debug.Log($"{attacker.name} hit {defender.name}");
         defender.ReceiveDamage(attacker.CurrentAttack, attacker);
     }
 }
