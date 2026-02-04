@@ -34,7 +34,7 @@ public class HitBox : MonoBehaviour
 
         PlayerController defender = other.GetComponentInParent<PlayerController>();
 
-        if (defender == null || attacker == null || defender == attacker || defender.isInvincible) {
+        if (defender == null || attacker == null || defender == attacker) {
             return;
         }
 
