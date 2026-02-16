@@ -1,17 +1,17 @@
 using UnityEngine;
 
-[RequireComponent(typeof(Collider2D))]
+[RequireComponent(typeof(BoxCollider2D))]
 public class HitBox : MonoBehaviour
 {
     public LayerMask opponentLayer;
 
     private PlayerController attacker;
-    private Collider2D col;
     private bool hasHit;
+    private BoxCollider2D col;
 
     private void Awake() {
         attacker = GetComponentInParent<PlayerController>();
-        col = GetComponent<Collider2D>();
+        col = GetComponent<BoxCollider2D>();
 
         col.isTrigger = true;
         col.enabled = false;
@@ -38,8 +38,20 @@ public class HitBox : MonoBehaviour
             return;
         }
 
+        Vector3 hitPos = GetHitPosition();
         hasHit = true;
         Debug.Log($"{attacker.name} hit {defender.name}");
-        defender.ReceiveDamage(attacker.CurrentAttack, attacker);
+        defender.ReceiveDamage(attacker.CurrentAttack, attacker, hitPos);
+    }
+
+    Vector3 GetHitPosition()
+    {
+        Vector3 center = col.bounds.center;
+        float halfWidth = col.bounds.extents.x;
+        float dir = Mathf.Sign(transform.lossyScale.x);
+        Vector3 pos = center;
+        pos.x += halfWidth * dir;
+
+        return pos;
     }
 }

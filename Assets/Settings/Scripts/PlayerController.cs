@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections.Generic;
-using static PlayerController;
 using System.Collections;
 
 [RequireComponent(typeof(Rigidbody2D))]
@@ -16,9 +15,15 @@ public class PlayerController : MonoBehaviour
     Camera cam;
     Vector2 moveInput;
     List<AttackType> inputSequence = new List<AttackType>();
+    public GameObject hitEffects;
+    public Animator shadowAnimator;
+
+    public GameObject dustEffectPrefab;
+    public Vector2 dustOffset = new Vector2(-0.3f, -0.6f);
+    public Transform groundPoint;
 
     public float speed = 6f;
-    public float comboTimeout = 0.35f;
+    public float comboTimeout = 0.15f;
     public float maxHealth = 100;
     public float currHealth;
     public float maxStamina = 100f;
@@ -31,17 +36,17 @@ public class PlayerController : MonoBehaviour
     public float damageHeavy = 5f;
     public float damageKick = 3f;
     public float damageFlyingKnee = 15f;
-    public float damageLaunch = 2f;
+    public float damageLaunch = 1.5f;
     public float damageRightHook = 6f;
 
     // Stamina Cost
     public float staminaJab = 6f;
-    public float staminaKick = 8f;
+    public float staminaKick = 17f;
     public float staminaHeavy = 15f;
-    public float staminaLaunch = 20f;
-    public float staminaFlyingKnee = 50f;
+    public float staminaLaunch = 10f;
+    public float staminaFlyingKnee = 55f;
     public float staminaRightHook = 15f;
-    public float staminaBlockDrainPerSecond = 5f;
+    public float staminaBlockDrainPerSecond = 0.1f;
 
     public bool isTired;
     float comboTimer;
@@ -54,7 +59,8 @@ public class PlayerController : MonoBehaviour
     bool movementLockedInAir = false;
     public bool knockedDown = false;
     bool blockHeld = false;
-
+    public bool controlsLocked = false;
+    public bool facingRight = true;
 
     public enum AttackType {
         Jab,
@@ -97,12 +103,26 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        float x = Mathf.Abs(moveInput.x) > 0.01f ? Mathf.Sign(moveInput.x) * speed: 0f;
-        rb.linearVelocity = new Vector2(x, rb.linearVelocityY);
+        float x = Mathf.Abs(moveInput.x) > 0.01f
+        ? Mathf.Sign(moveInput.x) * speed
+        : 0f;
+
+        rb.linearVelocity = new Vector2(x, rb.linearVelocity.y);
+
+        if (x > 0.01f)
+            facingRight = true;
+        else if (x < -0.01f)
+            facingRight = false;
+
         animator.SetFloat("xVelocity", Mathf.Abs(rb.linearVelocityX));
+        shadowAnimator.SetFloat("xVelocity", Mathf.Abs(rb.linearVelocityX));
+
     }
 
     private void Update() {
+        if (controlsLocked)
+            return;
+
         if (Mathf.Abs(rb.linearVelocityX) > 0.01f) {
             float minX = cam.transform.position.x - camHalfWidth + halfWidth;
             float maxX = cam.transform.position.x + camHalfWidth - halfWidth;
@@ -143,8 +163,16 @@ public class PlayerController : MonoBehaviour
 
 
     }
+    void PlayAnim(string trigger)
+    {
+        animator.SetTrigger(trigger);
+
+        if (shadowAnimator != null)
+            shadowAnimator.SetTrigger(trigger);
+    }
 
     public void OnMove(InputAction.CallbackContext context) {
+        if (controlsLocked) return;
         moveInput = context.ReadValue<Vector2>();
     }
 
@@ -186,19 +214,34 @@ public class PlayerController : MonoBehaviour
 
     }
 
-    public void OnBlock(InputAction.CallbackContext context) {
-        if (context.started && currStamina > 0f && !isTired) {
-            canMove = false;
+    public void OnBlock(InputAction.CallbackContext context)
+    {
+        if (controlsLocked || isTired)
+            return;
+
+        if (context.started && currStamina > 0f)
+        {
             blockHeld = true;
-            animator.SetTrigger("Block");
+            canMove = false;
+
+            inputSequence.Clear(); 
+            CurrentAttack = AttackType.Block;
+            shadowAnimator.SetFloat("xVelocity", 0f);
+            animator.SetBool("Block", true);
+            shadowAnimator.SetBool("Block", true);
         }
-        else if (context.canceled) {
+        else if (context.canceled)
+        {
             blockHeld = false;
             ReleaseBlock();
         }
     }
 
+
     void QueueInput(AttackType attack) {
+        if (blockHeld)
+            return;
+
         if (isTired)
             return;
 
@@ -212,6 +255,9 @@ public class PlayerController : MonoBehaviour
     }
 
     void TryStartNextAttack() {
+        if (blockHeld)
+            return;
+
         if (!canMove) return;
         if (inputSequence.Count == 0) return;
 
@@ -236,28 +282,27 @@ public class PlayerController : MonoBehaviour
             case AttackType.Block:
                 CurrentAttack = AttackType.Block;
                 canMove = false;
-                animator.SetTrigger("Block");
+                PlayAnim("Block");
                 break;
             case AttackType.RightHook:
                 CurrentAttack = AttackType.RightHook;
                 canMove = false;
-                animator.SetTrigger("RightHook");
+                PlayAnim("RightHook");
                 break;
             case AttackType.Jab:
                 CurrentAttack = AttackType.Jab;
                 canMove = false;
-                animator.SetTrigger("Jab");
+                PlayAnim("Jab");
                 break;
             case AttackType.Heavy:
                 CurrentAttack = AttackType.Heavy;
                 canMove = false;
-                animator.SetTrigger("HeavyPunch");
+                PlayAnim("HeavyPunch");
                 break;
-
             case AttackType.Kick:
                 CurrentAttack = AttackType.Kick;
                 canMove = false;
-                animator.SetTrigger("Kick");
+                PlayAnim("Kick");
                 break;
         }
     }
@@ -265,17 +310,17 @@ public class PlayerController : MonoBehaviour
     private void StartLaunch() {
         CurrentAttack = AttackType.Launch;
         canMove = false;
-        animator.SetTrigger("Launch");
+        PlayAnim("Launch");
     }
     private void StartFlyingKnee() {
         CurrentAttack = AttackType.FlyingKnee;
         canMove = false;
         speed = 12f;
-        animator.SetTrigger("FlyingKnee");
+        PlayAnim("FlyingKnee");
     }
     private void StartTaunt() {
         canMove = false;
-        animator.SetTrigger("Taunt");
+        PlayAnim("Taunt");
     }
 
     public void EndAttack() {
@@ -309,7 +354,7 @@ public class PlayerController : MonoBehaviour
     }
 
     public void LaunchSpeedBoost() {
-        speed = 10f;
+        speed = 12f;
         canMove = true;
 
         if (inputSequence.Count > 0)
@@ -336,12 +381,19 @@ public class PlayerController : MonoBehaviour
             TryStartNextAttack();
     }
 
-    public void ReceiveDamage(AttackType attackType, PlayerController attacker) {
+    public void ReceiveDamage(AttackType attackType, PlayerController attacker, Vector3 hitPos) {
         if (roundManager.roundOver)
             return;
         
         if (knockedDown) {
             return;
+        }
+
+        if (!isInvincible)
+        {
+            blockHeld = false;
+            animator.SetBool("Block", false);
+            shadowAnimator.SetBool("Block", false);
         }
 
         float damage = attackType switch {
@@ -357,7 +409,7 @@ public class PlayerController : MonoBehaviour
             damage = damageRightHook;
         }
 
-        if (blockHeld) {
+        if (isInvincible) {
             damage *= 0.2f;
             float newHealth = currHealth - damage;
             currHealth = Mathf.Max(newHealth, Mathf.Min(currHealth, 20f));
@@ -366,6 +418,7 @@ public class PlayerController : MonoBehaviour
             currHealth -= damage;
         }
 
+        SpawnHitFX(hitPos, attackType, isInvincible);
 
         currHealth = Mathf.Clamp(currHealth, 0f, maxHealth);
         healthBar.SetHealth(currHealth, maxHealth);
@@ -400,27 +453,104 @@ public class PlayerController : MonoBehaviour
             StartCoroutine(ReenableCollision(attackerCol, 0.10f));
         }
 
-        animator.Rebind();
-        animator.Update(0f);
+        animator.Play(animator.GetCurrentAnimatorStateInfo(0).shortNameHash, 0, 0f);
 
         switch (attackType) {
             case AttackType.Launch:
                 animator.Play("Falling Down", 0, 0f);
+                shadowAnimator.Play("Falling Down");
+                currStamina += 10;
                 break;
             case AttackType.Heavy:
             case AttackType.FlyingKnee:
                 animator.Play("Damage 2", 0, 0f);
-                if(currStamina < 50f)
-                    isTired = true;
+                shadowAnimator.Play("Damage 2", 0, 0f);
+                if (currStamina < 50f && isTired)
+                    EnterTired();
+                else
+                    currStamina += 5;
                 break;
             default:
                 animator.Play("Damage 1", 0, 0f);
-                if (currStamina < 50f)
-                    isTired = true;
+                shadowAnimator.Play("Damage 1", 0, 0f);
+                if (currStamina < 50f && isTired)
+                    EnterTired();
+                else
+                    currStamina += 1;
                 break;
         }
         speed = 6f;
     }
+
+    void SpawnHitFX(Vector3 pos, AttackType attack, bool wasBlocked) {
+        Vector3 spawnPos = new Vector3(pos.x, pos.y, -1f);
+        Vector2 offset = new Vector2(0f, 0f);
+        if (attack == AttackType.Kick) {
+            offset = new Vector2(0f, -1.5f);
+        } else if (attack == AttackType.Heavy) {
+            offset = new Vector2(0f, -0.75f);
+        } else if (attack == AttackType.Jab)
+        {
+            offset = new Vector2(0f, -0.75f);
+        }
+
+        spawnPos = new Vector3(
+        pos.x + offset.x,
+        pos.y + offset.y,
+        -1f
+    );
+
+        GameObject fx = Instantiate(hitEffects, spawnPos, Quaternion.identity);
+        Animator anim = fx.GetComponent<Animator>();
+        int hitType = GetHitTypeFromAttack(attack);
+
+        if (wasBlocked) {
+            Debug.Log("BLOCKED BLOCKED");
+            hitType = 6;
+        }
+        else {
+            hitType = GetHitTypeFromAttack(attack);
+        }
+        anim.SetInteger("HitType", hitType);
+    }
+
+    public void SpawnDustFX()
+    {
+        if (dustEffectPrefab == null) return;
+
+        Vector3 basePos = groundPoint.position;
+        float xOffset = dustOffset.x;
+        if (!facingRight)
+            xOffset *= -1f;
+
+        Vector3 spawnPos = new Vector3(
+            basePos.x + xOffset,
+            basePos.y + dustOffset.y,
+            -1f
+        );
+
+        GameObject fx = Instantiate(dustEffectPrefab, spawnPos, Quaternion.identity);
+        Vector3 scale = fx.transform.localScale;
+        scale.x = Mathf.Abs(scale.x) * (facingRight ? 1 : -1);
+        fx.transform.localScale = scale;
+
+    }
+
+
+
+
+    int GetHitTypeFromAttack(AttackType attack) {
+        return attack switch {
+            AttackType.Jab => 1,
+            AttackType.Heavy => 2,
+            AttackType.Kick => 3,
+            AttackType.Launch => 4,
+            AttackType.FlyingKnee => 5,
+            AttackType.RightHook => 7,
+            _ => 1
+        };
+    }
+
 
     public void RightHookAssignment() {
         CurrentAttack = AttackType.RightHook;
@@ -429,6 +559,8 @@ public class PlayerController : MonoBehaviour
     void KnockedOut() {
         canMove = false;
         animator.Play("Falling Down");
+        if (shadowAnimator != null)
+            shadowAnimator.gameObject.SetActive(false);
         roundManager.OnPlayerKO(this);
     }
 
@@ -440,11 +572,18 @@ public class PlayerController : MonoBehaviour
     public void FreezeBlockAnimation() {
         if (blockHeld)
             animator.speed = 0f;
+            shadowAnimator.speed = 0f;
     }
 
     void ReleaseBlock() {
+        blockHeld = false;
+        isInvincible = false;
+
         canMove = true;
         animator.speed = 1f;
+        shadowAnimator.speed = 1f;
+        animator.SetBool("Block", false);
+        shadowAnimator.SetBool("Block", false);
     }
 
     public void OnLanded() {
@@ -480,7 +619,6 @@ public class PlayerController : MonoBehaviour
         animator.speed = 0f;
         canMove = false;
         knockedDown = true;
-
         rb.linearVelocity = Vector2.zero;
         rb.simulated = false;
     }
@@ -493,7 +631,8 @@ public class PlayerController : MonoBehaviour
         blockHeld = false;
         currStamina = -10f;
         staminaBar.SetStamina(currStamina, maxStamina);
-
+        animator.SetBool("Block", false);
+        shadowAnimator.SetBool("Block", false);
         animator.SetBool("Tired", true);
     }
 
@@ -563,6 +702,7 @@ public class PlayerController : MonoBehaviour
         animator.speed = 1f;
         rb.linearVelocity = Vector2.zero;
         animator.Play("Taunt", 0, 0f);
+        shadowAnimator.Play("Taunt", 0, 0f);
         yield return new WaitForSeconds(2.19f);
         animator.Play("Idle", 0, 0f);
     }
@@ -590,7 +730,8 @@ public class PlayerController : MonoBehaviour
         isTired = false;
         knockedDown = false;
 
-        canMove = true;
+        canMove = false;
+        controlsLocked = true;
         blockHeld = false;
         movementLockedInAir = false;
 
@@ -600,6 +741,23 @@ public class PlayerController : MonoBehaviour
         animator.speed = 1f;
         animator.Rebind();
         animator.Update(0f);
+
+        if (shadowAnimator != null)
+            shadowAnimator.gameObject.SetActive(true);
+
+        shadowAnimator.speed = 1f;
+        shadowAnimator.Rebind();
+        shadowAnimator.Update(0f);
     }
+    public void LockControls() {
+        controlsLocked = true;
+        canMove = false;
+        rb.linearVelocity = Vector2.zero;
+    }
+    public void UnlockControls() {
+        controlsLocked = false;
+        canMove = true;
+    }
+
 
 }

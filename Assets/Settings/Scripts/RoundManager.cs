@@ -1,7 +1,6 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
-using static UnityEditor.Experimental.GraphView.GraphView;
 
 public class RoundManager : MonoBehaviour
 {
@@ -13,25 +12,54 @@ public class RoundManager : MonoBehaviour
     public Image[] p2_Rounds;
     public Image fadeImage;
     public CountDownTimer roundTimer;
+    public RoundUIController roundWorldUI;
 
     public float fadeDuration = 1f;
     public int roundsToWin = 3;
     public float roundResetDelay = 2f;
     int p1Wins = 0;
     int p2Wins = 0;
+    int currentRound = 1;
     public bool roundOver = false;
+    bool roundStarting = false;
+    bool tieGame = false;
 
     void Start() {
-        StartRound();
         p1StartPos = player1.transform.position;
         p2StartPos = player2.transform.position;
+        StartCoroutine(BeginMatch());
     }
 
-    void StartRound() {
-        roundOver = false;
+
+    IEnumerator BeginMatch() {
+        yield return StartCoroutine(Fade(1f, 1f));
+        currentRound = 1;
+        yield return StartCoroutine(StartRoundSequence());
+    }
+
+    IEnumerator StartRoundSequence() {
+        if (roundStarting) yield break;
+
+        roundStarting = true;
+        roundOver = true;
+
+        player1.LockControls();
+        player2.LockControls();
 
         roundTimer.ResetTimer();
+
+        yield return StartCoroutine(Fade(1f, 0f));
+        if (roundWorldUI != null) {
+            yield return StartCoroutine(
+                roundWorldUI.PlayRoundIntro(currentRound)
+            );
+        }
+
+        player1.UnlockControls();
+        player2.UnlockControls();
+        roundOver = false;
         roundTimer.StartTimer();
+        roundStarting = false;
     }
 
     void EndRound() {
@@ -42,7 +70,6 @@ public class RoundManager : MonoBehaviour
     public void OnPlayerKO(PlayerController loser) {
         if (roundOver) return;
 
-        roundTimer.StopTimer();
         StartCoroutine(ProcessKO(loser));
     }
 
@@ -55,15 +82,16 @@ public class RoundManager : MonoBehaviour
 
         if (isTie) {
             Debug.Log("ROUND TIE");
+            tieGame = true;
         } else {
+            tieGame = false;
             PlayerController winner;
 
             if (loser == player1) {
                 p2Wins++;
                 UpdateRoundUI(p2_Rounds, p2Wins);
                 winner = player2;
-            }
-            else {
+            } else {
                 p1Wins++;
                 UpdateRoundUI(p1_Rounds, p1Wins);
                 winner = player1;
@@ -75,8 +103,7 @@ public class RoundManager : MonoBehaviour
         CheckMatchEnd();
     }
 
-    public void OnTimeOver()
-    {
+    public void OnTimeOver() {
         if (roundOver) return;
         EndRound();
         PlayerController winner = null;
@@ -87,18 +114,23 @@ public class RoundManager : MonoBehaviour
             winner = player2;
 
         if (winner != null) {
+            tieGame = false;
             winner.PlayVictoryTauntDelayed(1.5f);
 
             if (winner == player1) {
                 p1Wins++;
                 UpdateRoundUI(p1_Rounds, p1Wins);
-            } else {
+            }
+            else {
                 p2Wins++;
                 UpdateRoundUI(p2_Rounds, p2Wins);
             }
         }
         else {
             Debug.Log("TIE");
+            player1.PlayVictoryTauntDelayed(2f);
+            player2.PlayVictoryTauntDelayed(2f);
+            tieGame = true;
         }
         CheckMatchEnd();
     }
@@ -106,8 +138,9 @@ public class RoundManager : MonoBehaviour
     void CheckMatchEnd() {
         if (p1Wins >= roundsToWin || p2Wins >= roundsToWin) {
             EndMatch();
-        }
-        else {
+        } else {
+            if (!tieGame)
+                currentRound++;
             StartCoroutine(RoundTransition());
         }
     }
@@ -118,18 +151,19 @@ public class RoundManager : MonoBehaviour
     }
 
     IEnumerator RoundTransition() {
-        yield return new WaitForSeconds(roundResetDelay);
+        float delay = tieGame ? 3f : roundResetDelay;
+        yield return new WaitForSeconds(delay);
         yield return StartCoroutine(Fade(0f, 1f));
+
+        player1.LockControls();
+        player2.LockControls();
 
         ResetPlayersPosition();
         player1.ResetForNewRound();
         player2.ResetForNewRound();
-        player1.FreezeMovementForSeconds(1f);
-        player2.FreezeMovementForSeconds(1f);
 
         yield return new WaitForSeconds(0.25f);
-        StartRound();
-        yield return StartCoroutine(Fade(1f, 0f));
+        yield return StartCoroutine(StartRoundSequence());
 
     }
 
@@ -150,8 +184,8 @@ public class RoundManager : MonoBehaviour
     }
 
     IEnumerator Fade(float from, float to) {
-        float t = 0f;
-        Color c = fadeImage.color;
+        float t = 0f; 
+        Color c = fadeImage.color; 
 
         while (t < fadeDuration) {
             t += Time.deltaTime;
