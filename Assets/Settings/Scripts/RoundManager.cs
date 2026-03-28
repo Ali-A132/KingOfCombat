@@ -25,6 +25,11 @@ public class RoundManager : MonoBehaviour
     bool tieGame = false;
 
     void Start() {
+        StartCoroutine(DelayedStart());
+    }
+
+    IEnumerator DelayedStart() {
+        yield return null;
         p1StartPos = player1.transform.position;
         p2StartPos = player2.transform.position;
         StartCoroutine(BeginMatch());

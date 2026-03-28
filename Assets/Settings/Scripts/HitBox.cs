@@ -34,13 +34,11 @@ public class HitBox : MonoBehaviour
 
         PlayerController defender = other.GetComponentInParent<PlayerController>();
 
-        if (defender == null || attacker == null || defender == attacker) {
+        if (defender == null || attacker == null || defender == attacker)
             return;
-        }
 
-        Vector3 hitPos = GetHitPosition();
+        Vector3 hitPos = other.ClosestPoint(col.bounds.center);
         hasHit = true;
-        Debug.Log($"{attacker.name} hit {defender.name}");
         defender.ReceiveDamage(attacker.CurrentAttack, attacker, hitPos);
     }
 
@@ -48,7 +46,7 @@ public class HitBox : MonoBehaviour
     {
         Vector3 center = col.bounds.center;
         float halfWidth = col.bounds.extents.x;
-        float dir = Mathf.Sign(transform.lossyScale.x);
+        float dir = attacker.facingRight ? 1f : -1f;
         Vector3 pos = center;
         pos.x += halfWidth * dir;
 
