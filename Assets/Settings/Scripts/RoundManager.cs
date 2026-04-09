@@ -1,11 +1,11 @@
 using System.Collections;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class RoundManager : MonoBehaviour
-{
-    Vector3 p1StartPos;
-    Vector3 p2StartPos;
+public class RoundManager : NetworkBehaviour {
+    protected Vector3 p1StartPos;
+    protected Vector3 p2StartPos;
     public PlayerController player1;
     public PlayerController player2;
     public Image[] p1_Rounds;
@@ -17,32 +17,31 @@ public class RoundManager : MonoBehaviour
     public float fadeDuration = 1f;
     public int roundsToWin = 3;
     public float roundResetDelay = 2f;
-    int p1Wins = 0;
-    int p2Wins = 0;
-    int currentRound = 1;
+    protected int p1Wins = 0;
+    protected int p2Wins = 0;
+    protected int currentRound = 1;
     public bool roundOver = false;
-    bool roundStarting = false;
-    bool tieGame = false;
+    protected bool roundStarting = false;
+    protected bool tieGame = false;
 
-    void Start() {
+    protected virtual void Start() {
         StartCoroutine(DelayedStart());
     }
 
-    IEnumerator DelayedStart() {
+    protected virtual IEnumerator DelayedStart() {
         yield return null;
         p1StartPos = player1.transform.position;
         p2StartPos = player2.transform.position;
         StartCoroutine(BeginMatch());
     }
 
-
-    IEnumerator BeginMatch() {
+    protected virtual IEnumerator BeginMatch() {
         yield return StartCoroutine(Fade(1f, 1f));
         currentRound = 1;
         yield return StartCoroutine(StartRoundSequence());
     }
 
-    IEnumerator StartRoundSequence() {
+    protected virtual IEnumerator StartRoundSequence() {
         if (roundStarting) yield break;
 
         roundStarting = true;
@@ -54,11 +53,8 @@ public class RoundManager : MonoBehaviour
         roundTimer.ResetTimer();
 
         yield return StartCoroutine(Fade(1f, 0f));
-        if (roundWorldUI != null) {
-            yield return StartCoroutine(
-                roundWorldUI.PlayRoundIntro(currentRound)
-            );
-        }
+        if (roundWorldUI != null)
+            yield return StartCoroutine(roundWorldUI.PlayRoundIntro(currentRound));
 
         player1.UnlockControls();
         player2.UnlockControls();
@@ -67,18 +63,17 @@ public class RoundManager : MonoBehaviour
         roundStarting = false;
     }
 
-    void EndRound() {
+    protected virtual void EndRound() {
         roundOver = true;
         roundTimer.StopTimer();
     }
 
-    public void OnPlayerKO(PlayerController loser) {
+    public virtual void OnPlayerKO(PlayerController loser) {
         if (roundOver) return;
-
         StartCoroutine(ProcessKO(loser));
     }
 
-    IEnumerator ProcessKO(PlayerController loser) {
+    protected virtual IEnumerator ProcessKO(PlayerController loser) {
         yield return null;
         if (roundOver) yield break;
 
@@ -86,33 +81,30 @@ public class RoundManager : MonoBehaviour
         bool isTie = player1.currHealth <= 0f && player2.currHealth <= 0f;
 
         if (isTie) {
-            Debug.Log("ROUND TIE");
             tieGame = true;
-        } else {
+        }
+        else {
             tieGame = false;
-            PlayerController winner;
+            PlayerController winner = loser == player1 ? player2 : player1;
 
             if (loser == player1) {
                 p2Wins++;
                 UpdateRoundUI(p2_Rounds, p2Wins);
-                winner = player2;
-            } else {
+            }
+            else {
                 p1Wins++;
                 UpdateRoundUI(p1_Rounds, p1Wins);
-                winner = player1;
             }
 
-            if (winner != null)
-                winner.PlayVictoryTauntDelayed(2f);
+            winner?.PlayVictoryTauntDelayed(2f);
         }
         CheckMatchEnd();
     }
 
-    public void OnTimeOver() {
+    public virtual void OnTimeOver() {
         if (roundOver) return;
         EndRound();
         PlayerController winner = null;
-
         if (player1.currHealth > player2.currHealth)
             winner = player1;
         else if (player2.currHealth > player1.currHealth)
@@ -121,41 +113,39 @@ public class RoundManager : MonoBehaviour
         if (winner != null) {
             tieGame = false;
             winner.PlayVictoryTauntDelayed(1.5f);
-
-            if (winner == player1) {
-                p1Wins++;
-                UpdateRoundUI(p1_Rounds, p1Wins);
+            if (winner == player1) { 
+                p1Wins++; UpdateRoundUI(p1_Rounds, p1Wins); 
             }
-            else {
-                p2Wins++;
-                UpdateRoundUI(p2_Rounds, p2Wins);
+            else { 
+                p2Wins++; 
+                UpdateRoundUI(p2_Rounds, p2Wins); 
             }
         }
         else {
-            Debug.Log("TIE");
+            tieGame = true;
             player1.PlayVictoryTauntDelayed(2f);
             player2.PlayVictoryTauntDelayed(2f);
-            tieGame = true;
         }
         CheckMatchEnd();
     }
 
-    void CheckMatchEnd() {
-        if (p1Wins >= roundsToWin || p2Wins >= roundsToWin) {
+    protected virtual void CheckMatchEnd() {
+        if (p1Wins >= roundsToWin || p2Wins >= roundsToWin)
             EndMatch();
-        } else {
-            if (!tieGame)
+        else {
+            if (!tieGame) 
                 currentRound++;
             StartCoroutine(RoundTransition());
         }
     }
 
-    void EndMatch() {
+    protected virtual void EndMatch() {
         Debug.Log("MATCH OVER");
         roundTimer.StopTimer();
     }
 
-    IEnumerator RoundTransition() {
+    protected virtual IEnumerator RoundTransition()
+    {
         float delay = tieGame ? 3f : roundResetDelay;
         yield return new WaitForSeconds(delay);
         yield return StartCoroutine(Fade(0f, 1f));
@@ -169,29 +159,25 @@ public class RoundManager : MonoBehaviour
 
         yield return new WaitForSeconds(0.25f);
         yield return StartCoroutine(StartRoundSequence());
-
     }
 
-    void UpdateRoundUI(Image[] rounds, int wins) {
-        for (int i = 0; i < rounds.Length; i++) {
+    protected void UpdateRoundUI(Image[] rounds, int wins) {
+        for (int i = 0; i < rounds.Length; i++)
             rounds[i].enabled = i < wins;
-        }
     }
 
-    void ResetPlayersPosition() {
+    protected void ResetPlayersPosition() {
         player1.transform.position = p1StartPos;
         player2.transform.position = p2StartPos;
-        Rigidbody2D rb1 = player1.GetComponent<Rigidbody2D>();
-        Rigidbody2D rb2 = player2.GetComponent<Rigidbody2D>();
-
+        var rb1 = player1.GetComponent<Rigidbody2D>();
+        var rb2 = player2.GetComponent<Rigidbody2D>();
         if (rb1) rb1.linearVelocity = Vector2.zero;
         if (rb2) rb2.linearVelocity = Vector2.zero;
     }
 
-    IEnumerator Fade(float from, float to) {
-        float t = 0f; 
-        Color c = fadeImage.color; 
-
+    protected IEnumerator Fade(float from, float to) {
+        float t = 0f;
+        Color c = fadeImage.color;
         while (t < fadeDuration) {
             t += Time.deltaTime;
             float a = Mathf.Lerp(from, to, t / fadeDuration);

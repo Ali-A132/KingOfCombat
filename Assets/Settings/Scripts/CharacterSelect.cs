@@ -121,8 +121,7 @@ public class CharacterSelectController : MonoBehaviour {
         } if (p2Index == 0) {
             mahskIdleFlipped.SetActive(true);
             mahskTitleCardFlipped.SetActive(true);
-        } else if (p2Index == 2)
-        {
+        } else if (p2Index == 2) {
             payetIdle.SetActive(true);
             payetTitleCard.SetActive(true);
         }

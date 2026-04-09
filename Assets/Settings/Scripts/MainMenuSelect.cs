@@ -1,3 +1,4 @@
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -6,6 +7,8 @@ public class MainMenuController : MonoBehaviour {
     private int currentIndex = 0;
     private int maxIndex = 3;
     private bool isMoving = false;
+    public GameObject mainMenuPanel;
+    public GameObject onlineMenuPanel;
 
     void Update() {
         if (isMoving) return;
@@ -45,7 +48,8 @@ public class MainMenuController : MonoBehaviour {
                 SceneManager.LoadScene("CharacterSelect");
                 break;
             case 1:
-                Debug.Log("Online (not implemented)");
+                currentIndex = 0;
+                SceneManager.LoadScene("OnlineMoonColony");
                 break;
             case 2:
                 Debug.Log("Training (not implemented)");
@@ -54,6 +58,10 @@ public class MainMenuController : MonoBehaviour {
                 Debug.Log("Settings (not implemented)");
                 break;
         }
+    }
+
+    public void OnBackToMainMenu() {
+        SceneManager.LoadScene("MainMenu");
     }
 
     System.Collections.IEnumerator MoveCooldown()

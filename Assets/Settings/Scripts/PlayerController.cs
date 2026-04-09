@@ -2,19 +2,21 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections.Generic;
 using System.Collections;
+using Unity.Netcode;
+using UnityEngine.SceneManagement;
 
 [RequireComponent(typeof(Rigidbody2D))]
-public class PlayerController : MonoBehaviour
+public class PlayerController : NetworkBehaviour
 {
-    Rigidbody2D rb;
-    Animator animator;
-    Collider2D bodyCollider;
+    protected Rigidbody2D rb;
+    protected Animator animator;
+    protected Collider2D bodyCollider;
     public UserInterface healthBar;
     public UserInterface staminaBar;
     public RoundManager roundManager;
-    Camera cam;
-    Vector2 moveInput;
-    List<AttackType> inputSequence = new List<AttackType>();
+    protected Camera cam;
+    protected Vector2 moveInput;
+    protected List<AttackType> inputSequence = new List<AttackType>();
     public GameObject hitEffects;
     public Animator shadowAnimator;
 
@@ -49,16 +51,16 @@ public class PlayerController : MonoBehaviour
     public float staminaBlockDrainPerSecond;
 
     public bool isTired;
-    float comboTimer;
-    float halfWidth;
-    float camHalfWidth;
+    protected float comboTimer;
+    protected float halfWidth;
+    protected float camHalfWidth;
 
     public bool canMove = true;
-    bool upHeld = false;
+    protected bool upHeld = false;
     public bool isInvincible = false;
-    bool movementLockedInAir = false;
+    protected bool movementLockedInAir = false;
     public bool knockedDown = false;
-    bool blockHeld = false;
+    protected bool blockHeld = false;
     public bool controlsLocked = false;
     public bool facingRight = true;
     public bool secondKick = false;
@@ -134,7 +136,7 @@ public class PlayerController : MonoBehaviour
         bodyCollider = GetComponent<Collider2D>();
     }
 
-    private void FixedUpdate() {
+    protected virtual void FixedUpdate() {
         if (!canMove) {
             rb.linearVelocity = Vector2.zero;
             return;
@@ -164,10 +166,12 @@ public class PlayerController : MonoBehaviour
 
         animator.SetFloat("xVelocity", Mathf.Abs(rb.linearVelocityX));
         shadowAnimator.SetFloat("xVelocity", Mathf.Abs(rb.linearVelocityX));
-
+        FixedUpdate_PostBase();
     }
 
-    private void Update() {
+    protected virtual void FixedUpdate_PostBase() { }
+
+    protected virtual void Update() {
         if (controlsLocked)
             return;
 
@@ -446,7 +450,7 @@ public class PlayerController : MonoBehaviour
             TryStartNextAttack();
     }
 
-    public void ReceiveDamage(AttackType attackType, PlayerController attacker, Vector3 hitPos) {
+    public virtual void ReceiveDamage(AttackType attackType, PlayerController attacker, Vector3 hitPos) {
         if (roundManager.roundOver)
             return;
 
@@ -550,7 +554,7 @@ public class PlayerController : MonoBehaviour
             speed = 7f;
     }
 
-    void SpawnHitFX(Vector3 pos, AttackType attack, bool wasBlocked) {
+    public void SpawnHitFX(Vector3 pos, AttackType attack, bool wasBlocked) {
         Vector3 spawnPos = new Vector3(pos.x, pos.y, -1f);
         Vector2 offset = new Vector2(0f, 0f);
         if (attack == AttackType.Kick) {
@@ -631,7 +635,7 @@ public class PlayerController : MonoBehaviour
         CurrentAttack = AttackType.Chain;
     }
 
-    void KnockedOut() {
+    protected virtual void KnockedOut() {
         canMove = false;
         animator.Play("Falling Down");
         if (shadowAnimator != null)
@@ -707,7 +711,7 @@ public class PlayerController : MonoBehaviour
         rb.simulated = false;
     }
 
-    void EnterTired() {
+    public void EnterTired() {
         if (isTired) return;
 
         isTired = true;
@@ -756,13 +760,13 @@ public class PlayerController : MonoBehaviour
     }
 
 
-    public void EnableHitbox() {
+    public virtual void EnableHitbox() {
         HitBox hitbox = GetComponentInChildren<HitBox>();
         if (hitbox != null)
             hitbox.EnableHitbox();
     }
 
-    public void DisableHitbox() {
+    public virtual void DisableHitbox() {
         HitBox hitbox = GetComponentInChildren<HitBox>();
         if (hitbox != null)
             hitbox.DisableHitbox();
