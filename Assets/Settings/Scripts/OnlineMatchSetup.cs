@@ -19,33 +19,35 @@ public class OnlineMatchSetup : NetworkBehaviour {
     public CinemachineConfiner2D confiner;
     public GameObject stage;
     public GameObject lobbyPanel;
+    public OnlineCountDownTimer countDownTimer;
 
     GameObject p1Object;
     GameObject p2Object;
 
     public override void OnNetworkSpawn() {
+        countDownTimer.StopTimer();
         base.OnNetworkSpawn();
         HideAllPlayers();
         HideAllTitleCards();
     }
 
-    public void ActivateAndAssignOwnership(int p1CharIndex, ulong p1ClientId,int p2CharIndex, ulong p2ClientId) {
+    public void ActivateAndAssignOwnership(int p1CharIndex, ulong p1ClientId, int p2CharIndex, ulong p2ClientId) {
         if (!IsServer) return;
 
-        GameObject p1Object = p1CharIndex == 0 ? mahsk : payetFlipped;
-        GameObject p2Object = p2CharIndex == 0 ? mahskFlipped : payet;
+        GameObject p1Obj = p1CharIndex == 0 ? mahsk : payetFlipped;
+        GameObject p2Obj = p2CharIndex == 0 ? mahskFlipped : payet;
 
-        var p1NetObj = p1Object.GetComponent<NetworkObject>();
-        var p2NetObj = p2Object.GetComponent<NetworkObject>();
+        var p1NetObj = p1Obj.GetComponent<NetworkObject>();
+        var p2NetObj = p2Obj.GetComponent<NetworkObject>();
 
-        if (p1NetObj != null)
+        if (p1NetObj != null) 
             p1NetObj.ChangeOwnership(p1ClientId);
-        else
+        else 
             Debug.LogError("OnlineMatchSetup P1 missing NetworkObject!");
 
-        if (p2NetObj != null)
+        if (p2NetObj != null) 
             p2NetObj.ChangeOwnership(p2ClientId);
-        else
+        else 
             Debug.LogError("OnlineMatchSetup P2 missing NetworkObject!");
 
         ShowPlayersClientRpc(p1CharIndex, p2CharIndex);
@@ -55,6 +57,7 @@ public class OnlineMatchSetup : NetworkBehaviour {
     void ShowPlayersClientRpc(int p1CharIndex, int p2CharIndex) {
         if (stage != null) stage.SetActive(true);
         if (lobbyPanel != null) lobbyPanel.SetActive(false);
+        if (countDownTimer != null) countDownTimer.Initialize();
 
         StartCoroutine(RefreshConfiner());
         p1Object = p1CharIndex == 0 ? mahsk : payetFlipped;
@@ -69,7 +72,8 @@ public class OnlineMatchSetup : NetworkBehaviour {
 
         roundManager.player1 = p1Object.GetComponent<PlayerController>();
         roundManager.player2 = p2Object.GetComponent<PlayerController>();
-        targetGroup.Targets = new List<CinemachineTargetGroup.Target> {
+        targetGroup.Targets = new List<CinemachineTargetGroup.Target>
+        {
             new CinemachineTargetGroup.Target { Object = p1Object.transform, Weight = 1f, Radius = 1f },
             new CinemachineTargetGroup.Target { Object = p2Object.transform, Weight = 1f, Radius = 1f }
         };
@@ -87,16 +91,17 @@ public class OnlineMatchSetup : NetworkBehaviour {
     void DeactivateUnused(GameObject active1, GameObject active2) {
         GameObject[] all = { mahsk, mahskFlipped, payet, payetFlipped };
         foreach (var go in all) {
-            if (go == null) continue;
-            if (go != active1 && go != active2)
+            if (go == null) 
+                continue;
+            if (go != active1 && go != active2) 
                 go.SetActive(false);
         }
     }
 
     void HideAllPlayers() {
-        HidePlayer(mahsk);
+        HidePlayer(mahsk); 
         HidePlayer(mahskFlipped);
-        HidePlayer(payet);
+        HidePlayer(payet); 
         HidePlayer(payetFlipped);
     }
 
@@ -109,39 +114,31 @@ public class OnlineMatchSetup : NetworkBehaviour {
 
     void HidePlayer(GameObject player) {
         if (player == null) return;
-
         foreach (var sr in player.GetComponentsInChildren<SpriteRenderer>(true))
             sr.enabled = false;
-
         foreach (var col in player.GetComponentsInChildren<Collider2D>(true))
             col.enabled = false;
-
         var rb = player.GetComponent<Rigidbody2D>();
-        if (rb != null) {
-            rb.simulated = false;
-            rb.linearVelocity = Vector2.zero;
+        if (rb != null) { 
+            rb.simulated = false; 
+            rb.linearVelocity = Vector2.zero; 
         }
-
         var pc = player.GetComponent<OnlinePlayerController>();
-        if (pc != null)
+        if (pc != null) 
             pc.enabled = false;
     }
 
     void ShowPlayer(GameObject player) {
         if (player == null) return;
-
         foreach (var sr in player.GetComponentsInChildren<SpriteRenderer>(true))
             sr.enabled = true;
-
         foreach (var col in player.GetComponentsInChildren<Collider2D>(true))
             col.enabled = true;
-
         var rb = player.GetComponent<Rigidbody2D>();
-        if (rb != null)
+        if (rb != null) 
             rb.simulated = true;
-
         var pc = player.GetComponent<OnlinePlayerController>();
-        if (pc != null)
+        if (pc != null) 
             pc.enabled = true;
     }
 
@@ -149,16 +146,12 @@ public class OnlineMatchSetup : NetworkBehaviour {
         if (player == null) return;
         var rb = player.GetComponent<Rigidbody2D>();
         if (rb == null) return;
-
-        if (freeze)
-            rb.constraints = RigidbodyConstraints2D.FreezePositionY | RigidbodyConstraints2D.FreezeRotation;
-        else
-            rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+        rb.constraints = freeze ? RigidbodyConstraints2D.FreezePositionY | RigidbodyConstraints2D.FreezeRotation : RigidbodyConstraints2D.FreezeRotation;
     }
 
     IEnumerator RefreshConfiner() {
         yield return null;
-        if (confiner != null)
+        if (confiner != null) 
             confiner.InvalidateBoundingShapeCache();
     }
 }

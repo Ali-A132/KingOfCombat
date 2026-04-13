@@ -1,5 +1,6 @@
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 
 public class SessionWatcher : NetworkBehaviour {
@@ -18,6 +19,10 @@ public class SessionWatcher : NetworkBehaviour {
     public void OnCharacterSelected(int index) {
         SelectedCharacter = index;
         Debug.Log($"SessionWatcher Character selected locally: {index}");
+    }
+
+    public void OnBackSelected() {
+        SceneManager.LoadScene("MainMenu");
     }
 
     void Update() {

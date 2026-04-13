@@ -81,7 +81,7 @@ public class PlayerController : NetworkBehaviour
     }
 
     public CharacterType characterType;
-    void ApplyCharacterStats() {
+    public virtual void ApplyCharacterStats() {
         switch (characterType) {
             case CharacterType.Mahsk:
                 speed = 5.5f;
@@ -648,13 +648,13 @@ public class PlayerController : NetworkBehaviour
         Physics2D.IgnoreCollision(bodyCollider, attackerCol, false);
     }
 
-    public void FreezeBlockAnimation() {
+    public virtual void FreezeBlockAnimation() {
         if (blockHeld)
             animator.speed = 0f;
         shadowAnimator.speed = 0f;
     }
 
-    void ReleaseBlock() {
+    protected virtual void ReleaseBlock() {
         blockHeld = false;
         isInvincible = false;
 
@@ -711,7 +711,7 @@ public class PlayerController : NetworkBehaviour
         rb.simulated = false;
     }
 
-    public void EnterTired() {
+    protected virtual void EnterTired() {
         if (isTired) return;
 
         isTired = true;
@@ -725,7 +725,7 @@ public class PlayerController : NetworkBehaviour
         shadowAnimator.SetBool("Tired", true);
     }
 
-    void ExitTired() {
+    protected virtual void ExitTired() {
         isTired = false;
         animator.SetBool("Tired", false);
         shadowAnimator.SetBool("Tired", false);

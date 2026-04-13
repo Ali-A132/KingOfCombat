@@ -10,12 +10,11 @@ public class OnlinePlayerController : PlayerController {
     bool isInDamageState = false;
 
     public override void OnNetworkSpawn() {
+        ApplyCharacterStats();
         netHealth.OnValueChanged += OnHealthChanged;
         netStamina.OnValueChanged += OnStaminaChanged;
-
         healthBar.SetHealth(netHealth.Value, maxHealth);
         staminaBar.SetStamina(netStamina.Value, maxStamina);
-
         LockControls();
     }
 
@@ -24,14 +23,8 @@ public class OnlinePlayerController : PlayerController {
         netStamina.OnValueChanged -= OnStaminaChanged;
     }
 
-    void OnHealthChanged(float prev, float curr) {
-        healthBar.SetHealth(curr, maxHealth);
-    }
-
-    void OnStaminaChanged(float prev, float curr) {
-        staminaBar.SetStamina(curr, maxStamina);
-    }
-
+    void OnHealthChanged(float prev, float curr) { healthBar.SetHealth(curr, maxHealth); }
+    void OnStaminaChanged(float prev, float curr) { staminaBar.SetStamina(curr, maxStamina); }
 
     protected override void FixedUpdate() {
         if (!IsOwner) return;
@@ -44,48 +37,92 @@ public class OnlinePlayerController : PlayerController {
         SubmitStaminaServerRpc(currStamina);
     }
 
+    [ServerRpc]
+    void SubmitStaminaServerRpc(float stamina) { 
+        netStamina.Value = stamina;
+    }
+
+    protected override void EnterTired() {
+        base.EnterTired();
+        if (IsOwner) SyncTiredServerRpc(true);
+    }
+
+    protected override void ExitTired() {
+        base.ExitTired();
+        if (IsOwner) SyncTiredServerRpc(false);
+    }
+
+    [ServerRpc]
+    void SyncTiredServerRpc(bool tired) { 
+        SyncTiredClientRpc(tired);
+    }
+
+    [ClientRpc]
+    void SyncTiredClientRpc(bool tired) {
+        if (IsOwner) return;
+        animator.SetBool("Tired", tired);
+        if (shadowAnimator != null) shadowAnimator.SetBool("Tired", tired);
+    }
+
+    public new void DrainStaminaEvent() {
+        if (!IsOwner) return;
+        base.DrainStaminaEvent();
+    }
+
+    public override void EnableHitbox() {
+        if (!IsOwner) return;
+        OnlineHitBox hitbox = GetComponentInChildren<OnlineHitBox>();
+        if (hitbox != null) hitbox.EnableHitbox();
+    }
+
+    public override void DisableHitbox() {
+        if (!IsOwner) return;
+        OnlineHitBox hitbox = GetComponentInChildren<OnlineHitBox>();
+        if (hitbox != null) hitbox.DisableHitbox();
+    }
+
     public new void OnMove(InputAction.CallbackContext context) {
         if (!IsOwner) return;
         base.OnMove(context);
     }
 
     public new void OnJab(InputAction.CallbackContext context) {
-        if (!IsOwner || !context.started) return;
+        if (!IsOwner || !context.started || isTired) return;
         bool up = moveInput.y > 0.5f;
         base.OnJab(context);
         SyncAnimServerRpc(up ? "Taunt" : "Jab");
     }
 
     public new void OnHeavyPunch(InputAction.CallbackContext context) {
-        if (!IsOwner || !context.started) return;
+        if (!IsOwner || !context.started || isTired) return;
         bool up = moveInput.y > 0.5f;
         base.OnHeavyPunch(context);
         SyncAnimServerRpc(up ? "Launch" : "HeavyPunch");
     }
 
     public new void OnKick(InputAction.CallbackContext context) {
-        if (!IsOwner || !context.started) return;
+        if (!IsOwner || !context.started || isTired) return;
         bool up = moveInput.y > 0.5f;
         base.OnKick(context);
         SyncAnimServerRpc(up ? "Special" : "Kick");
     }
 
     public new void OnLaunch(InputAction.CallbackContext context) {
-        if (!IsOwner || !context.started) return;
+        if (!IsOwner || !context.started || isTired) return;
         if (moveInput.y <= 0.5f) return;
         base.OnLaunch(context);
         SyncAnimServerRpc("Launch");
     }
 
     public new void OnSpecial(InputAction.CallbackContext context) {
-        if (!IsOwner || !context.started) return;
+        if (!IsOwner || !context.started || isTired) return;
         if (moveInput.y <= 0.5f) return;
         base.OnSpecial(context);
         SyncAnimServerRpc("Special");
     }
 
     public new void OnChain(InputAction.CallbackContext context) {
-        if (!IsOwner || !context.started) return;
+        if (!IsOwner || !context.started || isTired) return;
         base.OnChain(context);
         SyncAnimServerRpc("Chain");
     }
@@ -97,42 +134,26 @@ public class OnlinePlayerController : PlayerController {
         if (context.canceled) SyncBlockServerRpc(false);
     }
 
-    [ServerRpc]
-    void SubmitStaminaServerRpc(float stamina) {
-        netStamina.Value = stamina;
-    }
-
-    public void ApplyDamage(AttackType attackType, Vector3 hitPos) {
+    public void ApplyDamage(AttackType attackType, Vector3 hitPos, float damage, ulong attackerClientId) {
         if (!IsServer) return;
-
-        float damage = attackType switch {
-            AttackType.Jab => damageJab,
-            AttackType.Heavy => damageHeavy,
-            AttackType.Kick => damageKick,
-            AttackType.Special => damageSpecial,
-            AttackType.Launch => damageLaunch,
-            AttackType.Chain => damageChain,
-            _ => 0f
-        };
+        if (roundManager.roundOver) return;
 
         if (isInvincible) {
             damage *= 0.2f;
             float newHealth = currHealth - damage;
             currHealth = Mathf.Max(newHealth, Mathf.Min(currHealth, 20f));
-        }
-        else {
+        } else {
             currHealth -= damage;
         }
 
         currHealth = Mathf.Clamp(currHealth, 0f, maxHealth);
         netHealth.Value = currHealth;
-        ApplyDamageClientRpc((int)attackType, hitPos, currHealth);
+        ApplyDamageClientRpc((int)attackType, hitPos, currHealth, attackerClientId);
     }
 
     [ClientRpc]
-    void ApplyDamageClientRpc(int attackTypeInt, Vector3 hitPos, float newHealth) {
+    void ApplyDamageClientRpc(int attackTypeInt, Vector3 hitPos, float newHealth, ulong attackerClientId) {
         AttackType attack = (AttackType)attackTypeInt;
-
         if (roundManager.roundOver || knockedDown) return;
 
         isInDamageState = true;
@@ -142,50 +163,69 @@ public class OnlinePlayerController : PlayerController {
         if (!isInvincible) {
             blockHeld = false;
             animator.SetBool("Block", false);
-            shadowAnimator.SetBool("Block", false);
+            if (shadowAnimator != null) 
+                shadowAnimator.SetBool("Block", false);
         }
 
-        SpawnHitFX(hitPos, attack, isInvincible);
 
-        if (currHealth <= 0) {
-            KnockedOut();
-            return;
+        if (NetworkManager.Singleton.LocalClientId != attackerClientId) {
+            SpawnHitFX(hitPos, attack, isInvincible);
         }
 
+        if (NetworkManager.Singleton.LocalClientId == attackerClientId) {
+            SpawnHitFX(hitPos, attack, isInvincible);
+        }
+
+        if (currHealth <= 0) { KnockedOut(); return; }
         if (isInvincible) return;
+
+        StopAllCoroutines();
+        inputSequence.Clear();
+        canMove = false;
+
+        if (IsOwner) {
+            if (attack == AttackType.Launch) {
+                rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
+                movementLockedInAir = true;
+            } else {
+                rb.linearVelocity = Vector2.zero;
+            }
+        }
+
+        animator.SetFloat("xVelocity", 0f);
+        if (shadowAnimator != null) shadowAnimator.SetFloat("xVelocity", 0f);
 
         switch (attack) {
             case AttackType.Launch:
-                SyncAnimPlayServerRpc("Falling Down");
+                PlayDamageAnim("Falling Down");
+                currStamina += 12;
                 break;
-
             case AttackType.Heavy:
             case AttackType.Special:
-                SyncAnimPlayServerRpc("Damage 2");
+                PlayDamageAnim("Damage 2");
+                if (currStamina < 50f && isTired) EnterTired();
+                else currStamina += 5;
                 break;
-
             default:
-                SyncAnimPlayServerRpc("Damage 1");
+                PlayDamageAnim("Damage 1");
+                if (currStamina < 50f && isTired) EnterTired();
+                else currStamina += 1;
                 break;
         }
 
-        Invoke(nameof(ExitDamageState), 0.3f);
+        speed = characterType == CharacterType.Mahsk ? 5.5f : 7f;
     }
 
-    void ExitDamageState() {
+    void PlayDamageAnim(string stateName) {
+        animator.Play(stateName, 0, 0f);
+        if (shadowAnimator != null) 
+            shadowAnimator.Play(stateName, 0, 0f);
+    }
+
+
+    public new void EndAttack() {
         isInDamageState = false;
-    }
-
-    public override void EnableHitbox() {
-        OnlineHitBox hitbox = GetComponentInChildren<OnlineHitBox>();
-        if (hitbox != null)
-            hitbox.EnableHitbox();
-    }
-
-    public override void DisableHitbox() {
-        OnlineHitBox hitbox = GetComponentInChildren<OnlineHitBox>();
-        if (hitbox != null)
-            hitbox.DisableHitbox();
+        base.EndAttack();
     }
 
     protected override void KnockedOut() {
@@ -196,35 +236,20 @@ public class OnlinePlayerController : PlayerController {
     }
 
     [ServerRpc]
-    void SyncAnimServerRpc(string trigger) {
-        SyncAnimClientRpc(trigger);
+    void SyncAnimServerRpc(string trigger) { 
+        SyncAnimClientRpc(trigger); 
     }
 
     [ClientRpc]
     void SyncAnimClientRpc(string trigger) {
         if (IsOwner) return;
-        if (isInDamageState) return;
         animator.SetTrigger(trigger);
         if (shadowAnimator != null) shadowAnimator.SetTrigger(trigger);
     }
 
     [ServerRpc]
-    void SyncAnimPlayServerRpc(string trigger)
-    {
-        SyncAnimPlayClientRpc(trigger);
-    }
-
-    [ClientRpc]
-    void SyncAnimPlayClientRpc(string trigger)
-    {
-        if (IsOwner) return;
-        animator.Play(trigger, 0, 0f);
-        if (shadowAnimator != null) shadowAnimator.Play(trigger, 0, 0f);
-    }
-
-    [ServerRpc]
-    void SyncBlockServerRpc(bool blocking) {
-        SyncBlockClientRpc(blocking);
+    void SyncBlockServerRpc(bool blocking) { 
+        SyncBlockClientRpc(blocking); 
     }
 
     [ClientRpc]
@@ -235,18 +260,45 @@ public class OnlinePlayerController : PlayerController {
     }
 
     [ServerRpc]
-    void SyncVelocityAnimServerRpc(float xVel) {
-        SyncVelocityAnimClientRpc(xVel);
+    void SyncVelocityAnimServerRpc(float xVel) { 
+        SyncVelocityAnimClientRpc(xVel); 
     }
 
     [ClientRpc]
     void SyncVelocityAnimClientRpc(float xVel)
     {
         if (IsOwner) return;
-        if (isInDamageState) return; 
-
+        if (isInDamageState || !canMove) return;
         animator.SetFloat("xVelocity", xVel);
         if (shadowAnimator != null) shadowAnimator.SetFloat("xVelocity", xVel);
+    }
+
+    public override void FreezeBlockAnimation() {
+        base.FreezeBlockAnimation();
+        if (IsOwner) SyncBlockFreezeServerRpc(true);
+    }
+
+    protected override void ReleaseBlock() {
+        base.ReleaseBlock();
+        if (IsOwner) SyncBlockFreezeServerRpc(false);
+    }
+
+    [ServerRpc]
+    void SyncBlockFreezeServerRpc(bool freeze) {
+        SyncBlockFreezeClientRpc(freeze);
+    }
+
+    [ClientRpc]
+    void SyncBlockFreezeClientRpc(bool freeze) {
+        if (IsOwner) return;
+
+        if (freeze) {
+            animator.speed = 0f;
+            if (shadowAnimator != null) shadowAnimator.speed = 0f;
+        } else {
+            animator.speed = 1f;
+            if (shadowAnimator != null) shadowAnimator.speed = 1f;
+        }
     }
 
     protected override void FixedUpdate_PostBase() {

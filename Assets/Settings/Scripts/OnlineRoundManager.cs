@@ -3,19 +3,11 @@ using UnityEngine;
 using UnityEngine.UI;
 using Unity.Netcode;
 
-public class OnlineRoundManager : RoundManager, INetworkSerializable
-{
+public class OnlineRoundManager : RoundManager {
     public OnlineCountDownTimer onlineRoundTimer;
     public OnlineMatchSetup matchSetup;
 
-    NetworkObject netObject;
-
-    void Awake() {
-        netObject = GetComponent<NetworkObject>();
-    }
-
-    protected override void Start() {
-    }
+    protected override void Start() { }
 
     public void BeginOnlineMatch() {
         if (!IsServer) return;
@@ -28,6 +20,7 @@ public class OnlineRoundManager : RoundManager, INetworkSerializable
 
         p1StartPos = player1.transform.position;
         p2StartPos = player2.transform.position;
+        SyncStartPositionsClientRpc(p1StartPos, p2StartPos);
 
         StartCoroutine(OnlineBeginMatch());
     }
@@ -44,6 +37,7 @@ public class OnlineRoundManager : RoundManager, INetworkSerializable
 
         roundStarting = true;
         roundOver = true;
+        SetRoundOverClientRpc(true);
 
         LockBothClientRpc();
         onlineRoundTimer.ResetTimer();
@@ -56,14 +50,16 @@ public class OnlineRoundManager : RoundManager, INetworkSerializable
         yield return new WaitForSeconds(introDuration);
 
         matchSetup.UnfreezePlayersY();
-        UnlockBothClientRpc();
         roundOver = false;
+        SetRoundOverClientRpc(false);
+        UnlockBothClientRpc();
         onlineRoundTimer.StartTimer();
         roundStarting = false;
     }
 
     protected override void EndRound() {
         roundOver = true;
+        SetRoundOverClientRpc(true);
         onlineRoundTimer.StopTimer();
     }
 
@@ -81,15 +77,13 @@ public class OnlineRoundManager : RoundManager, INetworkSerializable
 
         if (isTie) {
             tieGame = true;
-        }
-        else {
+        } else {
             tieGame = false;
             if (loser == player1) {
                 p2Wins++;
                 UpdateRoundUIClientRpc(false, p2Wins);
                 PlayVictoryClientRpc(false, 2f);
-            }
-            else {
+            } else {
                 p1Wins++;
                 UpdateRoundUIClientRpc(true, p1Wins);
                 PlayVictoryClientRpc(true, 2f);
@@ -107,14 +101,12 @@ public class OnlineRoundManager : RoundManager, INetworkSerializable
             p1Wins++;
             UpdateRoundUIClientRpc(true, p1Wins);
             PlayVictoryClientRpc(true, 1.5f);
-        }
-        else if (player2.currHealth > player1.currHealth) {
+        } else if (player2.currHealth > player1.currHealth) {
             tieGame = false;
             p2Wins++;
             UpdateRoundUIClientRpc(false, p2Wins);
             PlayVictoryClientRpc(false, 1.5f);
-        }
-        else {
+        } else {
             tieGame = true;
             PlayVictoryClientRpc(true, 2f);
             PlayVictoryClientRpc(false, 2f);
@@ -145,11 +137,23 @@ public class OnlineRoundManager : RoundManager, INetworkSerializable
         yield return new WaitForSeconds(fadeDuration);
 
         LockBothClientRpc();
-        ResetPositionsClientRpc();
+        ResetPositionsClientRpc(p1StartPos, p2StartPos);
         ResetBothClientRpc();
 
         yield return new WaitForSeconds(0.25f);
         yield return StartCoroutine(OnlineStartRoundSequence());
+    }
+
+
+    [ClientRpc]
+    void SyncStartPositionsClientRpc(Vector3 p1Pos, Vector3 p2Pos) {
+        p1StartPos = p1Pos;
+        p2StartPos = p2Pos;
+    }
+
+    [ClientRpc]
+    void SetRoundOverClientRpc(bool value) {
+        roundOver = value;
     }
 
     [ClientRpc]
@@ -189,7 +193,7 @@ public class OnlineRoundManager : RoundManager, INetworkSerializable
 
     [ClientRpc]
     void UpdateRoundUIClientRpc(bool isP1, int wins) {
-        Image[] rounds = isP1 ? p1Rounds : p2Rounds;
+        Image[] rounds = isP1 ? p1_Rounds : p2_Rounds;
         for (int i = 0; i < rounds.Length; i++)
             rounds[i].enabled = i < wins;
     }
@@ -201,9 +205,9 @@ public class OnlineRoundManager : RoundManager, INetworkSerializable
     }
 
     [ClientRpc]
-    void ResetPositionsClientRpc() {
-        player1.transform.position = p1StartPos;
-        player2.transform.position = p2StartPos;
+    void ResetPositionsClientRpc(Vector3 p1Pos, Vector3 p2Pos) {
+        player1.transform.position = p1Pos;
+        player2.transform.position = p2Pos;
         var rb1 = player1.GetComponent<Rigidbody2D>();
         var rb2 = player2.GetComponent<Rigidbody2D>();
         if (rb1) rb1.linearVelocity = Vector2.zero;
@@ -215,6 +219,4 @@ public class OnlineRoundManager : RoundManager, INetworkSerializable
         player1?.ResetForNewRound();
         player2?.ResetForNewRound();
     }
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter { }
 }
